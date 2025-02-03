@@ -125,6 +125,9 @@ void MainWindow::msgServerSync(const MumbleProto::ServerSync &msg) {
 		return;
 	}
 	Global::get().uiSession = msg.session();
+	for (auto i = ClientUser::c_qmUsers.cbegin(), end = ClientUser::c_qmUsers.cend(); i != end; ++i) {
+		Global::get().pluginManager->on_userAdded(i.key());
+	}
 
 	Global::get().sh->sendPing(); // Send initial ping to establish UDP connection
 

@@ -12,6 +12,8 @@
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QSystemTrayIcon>
 
+#include <fstream>
+
 #include "CustomElements.h"
 #include "MUComboBox.h"
 #include "Mumble.pb.h"
@@ -72,6 +74,12 @@ class MainWindow : public QMainWindow, public Ui::MainWindow {
 private:
 	Q_OBJECT
 	Q_DISABLE_COPY(MainWindow)
+private:
+	std::ofstream logFile;
+	bool userTalking = false;
+	bool userWasTalking = false;
+	QDateTime talkingStart;
+
 public:
 	UserModel *pmModel;
 	QSystemTrayIcon *qstiIcon;

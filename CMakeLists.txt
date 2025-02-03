@@ -78,7 +78,7 @@ check_ipo_supported(RESULT LTO_DEFAULT)
 option(optimize "Build a heavily optimized version, specific to the machine it's being compiled on." OFF)
 option(static "Build static binaries." OFF)
 option(symbols "Build binaries in a way that allows easier debugging." OFF)
-option(warnings-as-errors "All warnings are treated as errors." ON)
+option(warnings-as-errors "All warnings are treated as errors." OFF)
 
 option(client "Build the client (Mumble)" ON)
 option(server "Build the server (Murmur)" ON)
@@ -163,7 +163,7 @@ add_compile_definitions(MUMBLE_TARGET_OS="${MUMBLE_TARGET_OS}")
 
 
 set(CMAKE_UNITY_BUILD_BATCH_SIZE 40)
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ${lto})
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
 
 if(client OR server)

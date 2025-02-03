@@ -325,6 +325,14 @@ add_library(smallft STATIC "${3RDPARTY_DIR}/smallft/smallft.cpp")
 target_include_directories(smallft PUBLIC "${3RDPARTY_DIR}/smallft")
 target_disable_warnings(smallft)
 
+add_library(BRT STATIC "${3RDPARTY_DIR}/BRTLibrary-main/test/test.cpp")
+target_compile_features(BRT PUBLIC cxx_std_17)
+target_include_directories(BRT PRIVATE "${3RDPARTY_DIR}/BRTLibrary-main/include")
+target_include_directories(BRT PRIVATE "${3RDPARTY_DIR}/nlohmann_json/include")
+target_include_directories(BRT SYSTEM INTERFACE "${3RDPARTY_DIR}/BRTLibrary-main/include")
+target_link_libraries(BRT PUBLIC "${3RDPARTY_DIR}/BRTLibrary-main/include/third_party_libraries/libmysofa/lib/vs/x64/Release/mysofa.lib")
+target_disable_warnings(BRT)
+
 add_custom_command(
 	OUTPUT "${CMAKE_BINARY_DIR}/mumble_flags.qrc"
 	COMMAND ${PYTHON_INTERPRETER}
@@ -335,6 +343,7 @@ list(APPEND MUMBLE_SOURCES "${CMAKE_BINARY_DIR}/mumble_flags.qrc")
 
 add_library(mumble_client_object_lib OBJECT ${MUMBLE_SOURCES})
 target_link_libraries(mumble_client_object_lib PUBLIC smallft)
+target_link_libraries(mumble_client_object_lib PUBLIC BRT)
 
 if(WIN32 AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 	# We don't want the console to appear in release builds.
@@ -490,7 +499,6 @@ else()
 	endif()
 endif()
 
-
 if(bundled-json)
 	set(JSON_BuildTests OFF CACHE INTERNAL "")
 	set(JSON_ImplicitConversions ON CACHE INTERNAL "")
@@ -618,6 +626,8 @@ if(WIN32)
 			Boost::system
 			Boost::thread
 	)
+
+
 
 	target_link_libraries(mumble_client_object_lib
 		PUBLIC
@@ -1128,6 +1138,9 @@ if(UNIX)
 	endif()
 endif()
 
+
+add_subdirectory("${3RDPARTY_DIR}/QOsc/" "${CMAKE_CURRENT_BINARY_DIR}/QOsc/" EXCLUDE_FROM_ALL)
+target_link_libraries(mumble_client_object_lib PUBLIC QOsc)
 
 # Workaround for a cmake bug that causes the auto-generated UI files (AutoUIC) to not be added
 # to the target's interface include directories. This can cause missing include errors in targets

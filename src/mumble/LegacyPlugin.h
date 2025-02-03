@@ -62,6 +62,8 @@ protected:
 									 Position3D &cameraPos, Vector3D &cameraDir, Vector3D &cameraAxis, QString &context,
 									 QString &identity) const override;
 	virtual void shutdownPositionalData() override;
+	virtual void onUserAdded(mumble_connection_t connection, mumble_userid_t userID) const override;
+	virtual void onUserRemoved(mumble_connection_t connection, mumble_userid_t userID) const override{};
 
 public:
 	virtual ~LegacyPlugin() override;

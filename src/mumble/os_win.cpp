@@ -86,12 +86,12 @@ static void mumbleMessageOutputQString(QtMsgType type, const QString &msg) {
 	}
 }
 
-static void mumbleMessageOutputWithContext(QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
+void mumbleMessageOutputWithContext(QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
 	Q_UNUSED(ctx);
 	mumbleMessageOutputQString(type, msg);
 }
 
-static LONG WINAPI MumbleUnhandledExceptionFilter(struct _EXCEPTION_POINTERS *ExceptionInfo) {
+LONG WINAPI MumbleUnhandledExceptionFilter(struct _EXCEPTION_POINTERS *ExceptionInfo) {
 	MINIDUMP_EXCEPTION_INFORMATION i;
 	i.ThreadId          = GetCurrentThreadId();
 	i.ExceptionPointers = ExceptionInfo;

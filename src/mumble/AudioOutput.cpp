@@ -21,6 +21,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 
 // Remember that we cannot use static member classes that are not pointers, as the constructor
 // for AudioOutputRegistrar() might be called before they are initialized, as the constructor
@@ -78,15 +79,34 @@ bool AudioOutputRegistrar::canExclusive() const {
 	return false;
 }
 
-AudioOutput::AudioOutput() {
+AudioOutput::AudioOutput() /* : envSources(5), envSourceBuffers(5) */ {
 	QObject::connect(this, &AudioOutput::bufferInvalidated, this, &AudioOutput::handleInvalidatedBuffer);
 	QObject::connect(this, &AudioOutput::bufferPositionChanged, this, &AudioOutput::handlePositionedBuffer);
+
+
+	envManager.BeginSetup();
+	//freeEnv     = envManager.CreateEnvironment< BRTEnvironmentModel::CFreeFieldEnvironmentModel >("env");
+	envListener = envManager.CreateListener < BRTListenerModel::CListenerHRTFbasedModel> ("listener");
+	//envListener->ConnectEnvironmentModel("env");
+	envManager.EndSetup();
+	newInstance = true;
+
+	//logFile = std::ofstream("speakerLog.txt");
+
+	//hrtf_loaded = std::make_shared< BRTServices::CHRTF >();
 }
 
 AudioOutput::~AudioOutput() {
+	//logFile.close();
 	bRunning = false;
 	wait();
 	wipe();
+
+	envListener->RemoveHRTF();
+	hrtf_loaded.reset();
+	envManager.RemoveListener("listener");
+	globalParameters.SetSampleRate(DEFAULT_SAMPLE_RATE);
+	initialized = false;
 
 	delete[] fSpeakers;
 	delete[] fSpeakerVolume;
@@ -249,6 +269,21 @@ void AudioOutput::removeBuffer(AudioOutputBuffer *buffer) {
 	}
 
 	emit bufferInvalidated(buffer);
+}
+
+bool AudioOutput::setHRTF(std::string &newPath) {
+	std::shared_ptr< BRTServices::CHRTF > temp_hrtf_loaded = std::make_shared< BRTServices::CHRTF >();
+	bool result = sofaReader.ReadHRTFFromSofa(newPath, temp_hrtf_loaded, HRTFRESAMPLINGSTEP/*, BRTServices::TEXTRAPOLATION_METHOD::nearest_point*/);
+
+	if (result) {
+		envListener->RemoveHRTF();
+		result &= envListener->SetHRTF(temp_hrtf_loaded);
+		if (!result)
+			envListener->SetHRTF(hrtf_loaded);
+		else
+			hrtf_loaded = temp_hrtf_loaded;
+	}
+	return result;
 }
 
 void AudioOutput::removeUser(const ClientUser *user) {
@@ -417,11 +452,67 @@ void AudioOutput::initializeMixer(const unsigned int *chanmasks, bool forceheadp
 	if (Global::get().s.bPositionalAudio && iChannels == 1) {
 		Global::get().l->logOrDefer(Log::Warning, tr("Positional audio cannot work with mono output devices!"));
 	}
+	BRTmutex.lock();
+	if (globalParameters.GetSampleRate() != iMixerFreq) {
+		globalParameters.SetSampleRate(iMixerFreq);
+		globalParameters.SetBufferSize(iFrameSize);
+
+		// for (int i = 0; i < envSourceBuffers.size(); i++) {
+		//	envSourceBuffers[i] = CMonoBuffer< float >(iFrameSize);
+		// }
+		bufferProcessed.left  = CMonoBuffer< float >(iFrameSize);
+		bufferProcessed.right = CMonoBuffer< float >(iFrameSize);
+		listenerRotationQuat  = { 0, 0, 0, 0 };
+
+		std::string sofa_path = "./3DTI_HRTF_IRC1008_256s_48000Hz.sofa";
+
+		setHRTF(sofa_path);
+	} else {
+		if (!initialized) {
+
+			// for (int i = 0; i < envSourceBuffers.size(); i++) {
+			//	envSourceBuffers[i] = CMonoBuffer< float >(iFrameSize);
+			// }
+			listenerRotationQuat  = { 0, 0, 0, 0 };
+
+			std::string sofa_path = "./3DTI_HRTF_IRC1008_256s_48000Hz.sofa";
+
+			//setHRTF(sofa_path);
+
+			tempTransform.SetPosition(Common::CVector3(0, 0, 0));
+			envListener->SetListenerTransform(tempTransform);
+			initialized = true;
+		} else {
+
+		}
+	}
+	if (envListener->GetHRTF()->GetFilename() == "") {
+		std::string sofa_path = "./3DTI_HRTF_IRC1008_256s_48000Hz.sofa";
+
+		setHRTF(sofa_path);
+	}
+	BRTmutex.unlock();
+	/*} else {
+
+		if (Manual::hrtfPath != "") {
+			setHRTF(Manual::hrtfPath.toStdString());
+		} else {
+			std::string sofa_path = "./3DTI_HRTF_IRC1008_256s_48000Hz.sofa";
+			setHRTF(sofa_path);
+		}
+	}*/
+
+	a = std::vector< std::vector< float > >(3);
+
+	for (std::vector< float > &columns : a)
+		columns = std::vector< float >(3);
+
 }
 
 bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 #ifdef USE_MANUAL_PLUGIN
 	positions.clear();
+	//instead of clear, fetch poisiton data from plugin?
 #endif
 
 	// A list of buffers that have audio to contribute
@@ -432,6 +523,8 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 	if (Global::get().s.fVolume < 0.01f) {
 		return false;
 	}
+
+	BRTmutex.lock();
 
 	const float adjustFactor = std::pow(10.f, -18.f / 20);
 	const float mul          = Global::get().s.fVolume;
@@ -453,6 +546,44 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 		if (!buffer->prepareSampleBuffer(frameCount)) {
 			qlDel.append(buffer);
 		} else {
+			AudioOutputSpeech *speech = qobject_cast< AudioOutputSpeech * >(buffer);
+			if (speech) {
+				//printf("\n %d", it.key()->iId);
+#ifdef USE_MANUAL_PLUGIN
+				if (!userPos.contains(it.key()->uiSession)) {
+					userPos.insert(it.key()->uiSession, { 0, 0.0001, 0 });
+					userBuffer.insert(it.key()->uiSession, CMonoBuffer< float >(frameCount));
+					
+					envManager.BeginSetup();
+					envSources.insert(it.key()->uiSession,
+									  envManager.CreateSoundSource< BRTSourceModel::CSourceSimpleModel >(
+										  (std::string("caller") + std::to_string(it.key()->uiSession))));
+					envListener->ConnectSoundSource(envSources[it.key()->uiSession]);
+					envManager.EndSetup();
+				}
+				if (ClientUser::c_qmUsers.contains(it.key()->uiSession)) {
+					const ClientUser *user = it.key();
+					Manual::spatializeSpeakers(it.key()->uiSession, (float *) userPos[it.key()->uiSession]);
+					Position3D newPos = userPos.value(it.key()->uiSession);
+					buffer->fPos[0]   = newPos.x;
+					buffer->fPos[1]   = newPos.y;
+					buffer->fPos[2]   = newPos.z;
+					userBuffer[user->uiSession].resize(frameCount);
+
+				}
+
+				//logFile << "\n" << it.key()->qsName.toStdString().c_str();
+				//errno_t err;
+				//// Reassign "stderr" to "freopen.out":
+				//err = freopen_s(&stream, "talkLog.out", "w", stderr);
+				//if (err != 0)
+				//	fprintf(stdout, "error on freopen\n");
+				//else {
+				//	fprintf(stream, "\n%s", it.key()->qsName.toStdString().c_str());
+				//	fclose(stream);
+				//}
+#endif
+			}
 			qlMix.append(buffer);
 
 			const ClientUser *user = it.key();
@@ -462,6 +593,29 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 		}
 		++it;
 	}
+
+#ifdef USE_MANUAL_PLUGIN
+	Manual::bufferLock.lock();
+	if (Manual::bufferToBeDeleted.size() > 0) {
+		for (int i = 0; i < Manual::bufferToBeDeleted.size(); i++) {
+			userPos.remove(Manual::bufferToBeDeleted[i]);
+			userBuffer.remove(Manual::bufferToBeDeleted[i]);
+			if (envSources[Manual::bufferToBeDeleted[i]]) {
+				envManager.BeginSetup();
+				envListener->DisconnectSoundSource(envSources[Manual::bufferToBeDeleted[i]]);
+				envManager.RemoveSoundSource(envSources[Manual::bufferToBeDeleted[i]]->GetID());
+				envManager.EndSetup();
+				envSources.remove(Manual::bufferToBeDeleted[i]);
+			}
+		}
+		Manual::bufferToBeDeleted.clear();
+	}
+	if (Manual::hrtfChanged) {
+		setHRTF(Manual::hrtfPath.toStdString());
+		Manual::hrtfChanged = false;
+	}
+	Manual::bufferLock.unlock();
+#endif
 
 	if (Global::get().prioritySpeakerActiveOverride) {
 		prioritySpeakerActive = true;
@@ -474,7 +628,27 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 	float *output = (eSampleFormat == SampleFloat) ? reinterpret_cast< float * >(outbuff) : fOutput.data();
 	memset(output, 0, sizeof(float) * frameCount * iChannels);
 
-	if (!qlMix.isEmpty()) {
+	//////////////////////////////////////////
+	// change into rebuffering ////////////////
+	//if (envListener->GetHRTF()->GetFilename() == "") {
+	//	if (Manual::hrtfPath != "") {
+	//		setHRTF(Manual::hrtfPath.toStdString());
+	//	} else {
+	//		std::string sofa_path = "./3DTI_HRTF_IRC1008_256s_48000Hz.sofa";
+	//		setHRTF(sofa_path);
+	//	}
+	//}
+
+	globalParameters.SetBufferSize(frameCount);
+
+	//for (int i = 0; i < envSourceBuffers.size(); i++) {
+	//	envSourceBuffers[i].resize(frameCount);
+	//}
+	bufferProcessed.left.resize(frameCount);
+	bufferProcessed.right.resize(frameCount);
+	//////////////////////////////////////////
+
+	if (!qlMix.isEmpty() && !newInstance) {
 		// There are audio sources available -> mix those sources together and feed them into the audio backend
 		static std::vector< float > speaker;
 		speaker.resize(iChannels * 3);
@@ -544,6 +718,45 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 
 			// Calculate right vector as front X top
 			Vector3D right = cameraAxis.crossProduct(cameraDir);
+			//float q0, q1, q2, q3;
+			//q0 = 0.5 * sqrtf(1 + (cameraDir.x + right.y + cameraAxis.z));
+			//q1 = (cameraAxis.y - right.z) / (4 * q0);
+			//q2 = (cameraDir.z - cameraAxis.x) / (4 * q0);
+			//q3 = (right.x - cameraDir.y) / (4 * q0);
+
+			a[0] = { right.x, right.y, right.z };
+			a[1] = { cameraAxis.x, cameraAxis.y, cameraAxis.z };
+			a[2] = { cameraDir.x, cameraDir.y, cameraDir.z };
+
+			float trace = a[0][0] + a[1][1] + a[2][2];
+			if (trace > 0) {
+				float s = 0.5f / sqrtf(trace + 1.0f);
+				listenerRotationQuat[0] = 0.25f / s;
+				listenerRotationQuat[1]  = (a[2][1] - a[1][2]) * s;
+				listenerRotationQuat[2] = (a[0][2] - a[2][0]) * s;
+				listenerRotationQuat[3]   = (a[1][0] - a[0][1]) * s;
+			} else {
+				if (a[0][0] > a[1][1] && a[0][0] > a[2][2]) {
+					float s = 2.0f * sqrtf(1.0f + a[0][0] - a[1][1] - a[2][2]);
+					listenerRotationQuat[0] = (a[2][1] - a[1][2]) / s;
+					listenerRotationQuat[1] = 0.25f * s;
+					listenerRotationQuat[2] = (a[0][1] + a[1][0]) / s;
+					listenerRotationQuat[3] = (a[0][2] + a[2][0]) / s;
+				} else if (a[1][1] > a[2][2]) {
+					float s = 2.0f * sqrtf(1.0f + a[1][1] - a[0][0] - a[2][2]);
+					listenerRotationQuat[0] = (a[0][2] - a[2][0]) / s;
+					listenerRotationQuat[1] = (a[0][1] + a[1][0]) / s;
+					listenerRotationQuat[2] = 0.25f * s;
+					listenerRotationQuat[3] = (a[1][2] + a[2][1]) / s;
+				} else {
+					float s = 2.0f * sqrtf(1.0f + a[2][2] - a[0][0] - a[1][1]);
+					listenerRotationQuat[0] = (a[1][0] - a[0][1]) / s;
+					listenerRotationQuat[1] = (a[0][2] + a[2][0]) / s;
+					listenerRotationQuat[2] = (a[1][2] + a[2][1]) / s;
+					listenerRotationQuat[3] = 0.25f * s;
+				}
+			}
+
 
 			/*
 						qWarning("Front: %f %f %f", front[0], front[1], front[2]);
@@ -562,6 +775,10 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 			validListener = true;
 		}
 
+		int j = 0;
+		//for (CMonoBuffer< float > &sourceBuffer : envSourceBuffers)
+		//	sourceBuffer.ApplyGain(0);
+		int nBuffer = 0;
 		for (AudioOutputBuffer *buffer : qlMix) {
 			// Iterate through all audio sources and mix them together into the output (or the intermediate array)
 			float *RESTRICT pfBuffer = buffer->pfBuffer;
@@ -572,6 +789,7 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 			AudioOutputSpeech *speech = qobject_cast< AudioOutputSpeech * >(buffer);
 			AudioOutputSample *sample = qobject_cast< AudioOutputSample * >(buffer);
 			const ClientUser *user    = nullptr;
+
 			if (speech) {
 				user = speech->p;
 
@@ -638,8 +856,7 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 				}
 			}
 
-			if (validListener
-				&& ((buffer->fPos[0] != 0.0f) || (buffer->fPos[1] != 0.0f) || (buffer->fPos[2] != 0.0f))) {
+			if (((buffer->fPos[0] != 0.0f) || (buffer->fPos[1] != 0.0f) || (buffer->fPos[2] != 0.0f))) {
 				// Add position to position map
 #ifdef USE_MANUAL_PLUGIN
 				if (user) {
@@ -648,115 +865,195 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 				}
 #endif
 
-				// If positional audio is enabled, calculate the respective audio effect here
-				Position3D outputPos = { buffer->fPos[0], buffer->fPos[1], buffer->fPos[2] };
-				Position3D ownPos    = Global::get().pluginManager->getPositionalData().getCameraPos();
-
-				Vector3D connectionVec = outputPos - ownPos;
-				float len              = connectionVec.norm();
-
-				if (len > 0.0f) {
-					// Don't use normalize-func in order to save the re-computation of the vector's length
-					connectionVec.x /= len;
-					connectionVec.y /= len;
-					connectionVec.z /= len;
-				}
-				/*
-								qWarning("Voice pos: %f %f %f", aop->fPos[0], aop->fPos[1], aop->fPos[2]);
-								qWarning("Voice dir: %f %f %f", connectionVec.x, connectionVec.y, connectionVec.z);
-				*/
-				if (!buffer->pfVolume) {
-					buffer->pfVolume = new float[nchan];
-					for (unsigned int s = 0; s < nchan; ++s)
-						buffer->pfVolume[s] = -1.0;
-				}
-
-				if (!buffer->piOffset) {
-					buffer->piOffset = std::make_unique< unsigned int[] >(nchan);
-					for (unsigned int s = 0; s < nchan; ++s) {
-						buffer->piOffset[s] = 0;
-					}
-				}
-
-				const bool isAudible =
-					(Global::get().s.fAudioMaxDistVolume > 0) || (len < Global::get().s.fAudioMaxDistance);
-
-				for (unsigned int s = 0; s < nchan; ++s) {
-					const float dot = bSpeakerPositional[s]
-										  ? connectionVec.x * speaker[s * 3 + 0] + connectionVec.y * speaker[s * 3 + 1]
-												+ connectionVec.z * speaker[s * 3 + 2]
-										  : 1.0f;
-					float channelVol;
-					if (isAudible) {
-						// In the current contex, we know that sound reaches at least one ear.
-						channelVol = svol[s] * calcGain(dot, len) * volumeAdjustment;
-					} else {
-						// The user has set the minimum positional volume to 0 and this sound source
-						// is exceeding the positional volume range. This means that the sound is completely
-						// inaudible at the current position. We therefore set the volume the to 0,
-						// making sure the user really can not hear any audio from that source.
-						channelVol = 0;
-					}
-
-					float *RESTRICT o   = output + s;
-					const float old     = (buffer->pfVolume[s] >= 0.0f) ? buffer->pfVolume[s] : channelVol;
-					const float inc     = (channelVol - old) / static_cast< float >(frameCount);
-					buffer->pfVolume[s] = channelVol;
-
-					// Calculates the ITD offset of the audio data this frame.
-					// Interaural Time Delay (ITD) is a small time delay between your ears
-					// depending on the sound source position on the horizontal plane and the
-					// distance between your ears.
-					//
-					// Offset for ITD is not applied directly, but rather the offset is interpolated
-					// linearly across the entire chunk, between the offset of the last chunk and the
-					// newly calculated offset for this chunk. This prevents clicking / buzzing when the
-					// audio source or camera is moving, because abruptly changing offsets (and thus
-					// abruptly changing the playback position) will create a clicking noise.
-					// Normalize dot to range [0,1] instead [-1,1]
-					const int offset      = static_cast< int >(INTERAURAL_DELAY * (1.0f + dot) / 2.0f);
-					const int oldOffset   = static_cast< int >(buffer->piOffset[s]);
-					const float incOffset = static_cast< float >(offset - oldOffset) / static_cast< float >(frameCount);
-					buffer->piOffset[s]   = static_cast< unsigned int >(offset);
-					/*
-										qWarning("%d: Pos %f %f %f : Dot %f Len %f ChannelVol %f", s, speaker[s*3+0],
-					   speaker[s*3+1], speaker[s*3+2], dot, len, channelVol);
-					*/
-					if ((old >= 0.00000001f) || (channelVol >= 0.00000001f)) {
-						for (unsigned int i = 0; i < frameCount; ++i) {
-							unsigned int currentOffset = static_cast< unsigned int >(
-								static_cast< float >(oldOffset) + incOffset * static_cast< float >(i));
-							if (speech && speech->bStereo) {
-								// Mix stereo user's stream into mono
-								// frame: for a stereo stream, the [LR] pair inside ...[LR]LRLRLR.... is a frame
-								o[i * nchan] += (pfBuffer[2 * i + currentOffset] / 2.0f
-												 + pfBuffer[2 * i + currentOffset + 1] / 2.0f)
-												* (old + inc * static_cast< float >(i));
-							} else {
-								o[i * nchan] += pfBuffer[i + currentOffset] * (old + inc * static_cast< float >(i));
-							}
-						}
-					}
-				}
-			} else {
-				// Mix the current audio source into the output by adding it to the elements of the output buffer after
-				// having applied a volume adjustment
-				for (unsigned int s = 0; s < nchan; ++s) {
-					const float channelVol = svol[s] * volumeAdjustment;
-					float *RESTRICT o      = output + s;
+				if (speech) {
+					unsigned int userId = speech->p->uiSession;
 					if (buffer->bStereo) {
 						// Linear-panning stereo stream according to the projection of fSpeaker vector on left-right
 						// direction.
 						// frame: for a stereo stream, the [LR] pair inside ...[LR]LRLRLR.... is a frame
 						for (unsigned int i = 0; i < frameCount; ++i)
-							o[i * nchan] += (pfBuffer[2 * i] * fStereoPanningFactor[2 * s + 0]
-											 + pfBuffer[2 * i + 1] * fStereoPanningFactor[2 * s + 1])
-											* channelVol;
+							//envSourceBuffers[j][i] = (pfBuffer[2 * i] + pfBuffer[2 * i + 1]);
+							userBuffer[userId][i] = (pfBuffer[2 * i] + pfBuffer[2 * i + 1]);
 					} else {
 						for (unsigned int i = 0; i < frameCount; ++i)
-							o[i * nchan] += pfBuffer[i] * channelVol;
+							//envSourceBuffers[j][i] = pfBuffer[i]; // change later
+							userBuffer[userId][i] = pfBuffer[i];
+					}
+
+					tempTransform.SetPosition(Common::CVector3(buffer->fPos[2], -buffer->fPos[0], buffer->fPos[1]));
+					envSources[userId]->SetSourceTransform(tempTransform);
+					//envSources[j]->SetBuffer(envSourceBuffers[j]);
+					envSources[userId]->SetBuffer(userBuffer[userId]);
+					j++;
+
+
+				} else {
+					// If positional audio is enabled, calculate the respective audio effect here
+					Position3D outputPos = { buffer->fPos[0], buffer->fPos[1], buffer->fPos[2] };
+					Position3D ownPos    = Global::get().pluginManager->getPositionalData().getCameraPos();
+
+					Vector3D connectionVec = outputPos - ownPos;
+					float len              = connectionVec.norm();
+
+					if (len > 0.0f) {
+						// Don't use normalize-func in order to save the re-computation of the vector's length
+						connectionVec.x /= len;
+						connectionVec.y /= len;
+						connectionVec.z /= len;
+					}
+					/*
+									qWarning("Voice pos: %f %f %f", aop->fPos[0], aop->fPos[1], aop->fPos[2]);
+									qWarning("Voice dir: %f %f %f", connectionVec.x, connectionVec.y, connectionVec.z);
+					*/
+					if (!buffer->pfVolume) {
+						buffer->pfVolume = new float[nchan];
+						for (unsigned int s = 0; s < nchan; ++s)
+							buffer->pfVolume[s] = -1.0;
+					}
+
+					if (!buffer->piOffset) {
+						buffer->piOffset = std::make_unique< unsigned int[] >(nchan);
+						for (unsigned int s = 0; s < nchan; ++s) {
+							buffer->piOffset[s] = 0;
+						}
+					}
+
+					const bool isAudible =
+						(Global::get().s.fAudioMaxDistVolume > 0) || (len < Global::get().s.fAudioMaxDistance);
+
+					for (unsigned int s = 0; s < nchan; ++s) {
+						const float dot = bSpeakerPositional[s] ? connectionVec.x * speaker[s * 3 + 0]
+																	  + connectionVec.y * speaker[s * 3 + 1]
+																	  + connectionVec.z * speaker[s * 3 + 2]
+																: 1.0f;
+						float channelVol;
+						if (isAudible) {
+							// In the current contex, we know that sound reaches at least one ear.
+							channelVol = svol[s] * calcGain(dot, len) * volumeAdjustment;
+						} else {
+							// The user has set the minimum positional volume to 0 and this sound source
+							// is exceeding the positional volume range. This means that the sound is completely
+							// inaudible at the current position. We therefore set the volume the to 0,
+							// making sure the user really can not hear any audio from that source.
+							channelVol = 0;
+						}
+
+						float *RESTRICT o   = output + s;
+						const float old     = (buffer->pfVolume[s] >= 0.0f) ? buffer->pfVolume[s] : channelVol;
+						const float inc     = (channelVol - old) / static_cast< float >(frameCount);
+						buffer->pfVolume[s] = channelVol;
+
+						// Calculates the ITD offset of the audio data this frame.
+						// Interaural Time Delay (ITD) is a small time delay between your ears
+						// depending on the sound source position on the horizontal plane and the
+						// distance between your ears.
+						//
+						// Offset for ITD is not applied directly, but rather the offset is interpolated
+						// linearly across the entire chunk, between the offset of the last chunk and the
+						// newly calculated offset for this chunk. This prevents clicking / buzzing when the
+						// audio source or camera is moving, because abruptly changing offsets (and thus
+						// abruptly changing the playback position) will create a clicking noise.
+						// Normalize dot to range [0,1] instead [-1,1]
+						const int offset    = static_cast< int >(INTERAURAL_DELAY * (1.0f + dot) / 2.0f);
+						const int oldOffset = static_cast< int >(buffer->piOffset[s]);
+						const float incOffset =
+							static_cast< float >(offset - oldOffset) / static_cast< float >(frameCount);
+						buffer->piOffset[s] = static_cast< unsigned int >(offset);
+						/*
+											qWarning("%d: Pos %f %f %f : Dot %f Len %f ChannelVol %f", s,
+						   speaker[s*3+0], speaker[s*3+1], speaker[s*3+2], dot, len, channelVol);
+						*/
+						if ((old >= 0.00000001f) || (channelVol >= 0.00000001f)) {
+							for (unsigned int i = 0; i < frameCount; ++i) {
+								unsigned int currentOffset = static_cast< unsigned int >(
+									static_cast< float >(oldOffset) + incOffset * static_cast< float >(i));
+								if (speech && speech->bStereo) {
+									// Mix stereo user's stream into mono
+									// frame: for a stereo stream, the [LR] pair inside ...[LR]LRLRLR.... is a frame
+									o[i * nchan] += (pfBuffer[2 * i + currentOffset] / 2.0f
+													 + pfBuffer[2 * i + currentOffset + 1] / 2.0f)
+													* (old + inc * static_cast< float >(i));
+								} else {
+									o[i * nchan] += pfBuffer[i + currentOffset] * (old + inc * static_cast< float >(i));
+								}
+							}
+						}
 					}
 				}
+			} else {
+
+
+				if (speech) {
+					unsigned int userId = speech->p->uiSession;
+					if (buffer->bStereo) {
+						// Linear-panning stereo stream according to the projection of fSpeaker vector on left-right
+						// direction.
+						// frame: for a stereo stream, the [LR] pair inside ...[LR]LRLRLR.... is a frame
+						for (unsigned int i = 0; i < frameCount; ++i)
+							userBuffer[userId][i] = (pfBuffer[2 * i] + pfBuffer[2 * i + 1]);
+							//envSourceBuffers[j][i] = (pfBuffer[2 * i] + pfBuffer[2 * i + 1]);
+					} else {
+						for (unsigned int i = 0; i < frameCount; ++i)
+							userBuffer[userId][i] = pfBuffer[i]; // change later
+							//envSourceBuffers[j][i] = pfBuffer[i]; //change later
+					}
+					tempTransform.SetPosition(Common::CVector3(0, 0, 0));
+					envSources[userId]->SetSourceTransform(tempTransform);
+					//envSources[j]->SetBuffer(envSourceBuffers[j]);
+					envSources[userId]->SetBuffer(userBuffer[userId]);
+					j++;
+				
+				} else {
+
+					// Mix the current audio source into the output by adding it to the elements of the output buffer
+					// after
+					// having applied a volume adjustment
+					for (unsigned int s = 0; s < nchan; ++s) {
+						const float channelVol = svol[s] * volumeAdjustment;
+						float *RESTRICT o      = output + s;
+						if (buffer->bStereo) {
+							// Linear-panning stereo stream according to the projection of fSpeaker vector on left-right
+							// direction.
+							// frame: for a stereo stream, the [LR] pair inside ...[LR]LRLRLR.... is a frame
+							for (unsigned int i = 0; i < frameCount; ++i)
+								o[i * nchan] += (pfBuffer[2 * i] * fStereoPanningFactor[2 * s + 0]
+												 + pfBuffer[2 * i + 1] * fStereoPanningFactor[2 * s + 1])
+												* channelVol;
+						} else {
+							for (unsigned int i = 0; i < frameCount; ++i)
+								o[i * nchan] += pfBuffer[i] * channelVol;
+						}
+					}
+				
+				}
+			}
+			nBuffer++;
+		}
+
+		if (validListener) {
+
+			Position3D ownPos = Global::get().pluginManager->getPositionalData().getCameraPos();
+			tempTransform.SetPosition(Common::CVector3(ownPos.z, -ownPos.x, ownPos.y));
+			tempTransform.SetOrientation(Common::CQuaternion(listenerRotationQuat[0], listenerRotationQuat[3],
+															 listenerRotationQuat[1], listenerRotationQuat[2]));
+			envListener->SetListenerTransform(tempTransform);
+			tempTransform.SetOrientation(Common::CQuaternion());
+
+		} else {
+
+			Position3D ownPos = Global::get().pluginManager->getPositionalData().getCameraPos();
+			tempTransform.SetPosition(Common::CVector3(ownPos.z, -ownPos.x, ownPos.y));
+			envListener->SetListenerTransform(tempTransform);
+		
+		}
+
+		envManager.ProcessAll();
+		envListener->GetBuffers(bufferProcessed.left, bufferProcessed.right);
+		float *RESTRICT o = output;
+		if (nchan >= 2) {
+			for (unsigned int i = 0; i < frameCount; ++i) {
+				o[i * nchan]       += bufferProcessed.left[i];
+				o[(i * nchan) + 1] += bufferProcessed.right[i];
 			}
 		}
 
@@ -779,16 +1076,17 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 				reinterpret_cast< short * >(outbuff)[i] =
 					static_cast< short >(qBound(-32768.f, (output[i] * 32768.f), 32767.f));
 	}
-
+	if (newInstance)
+		newInstance = false;
 	qrwlOutputs.unlock();
-
+	BRTmutex.unlock();
 	// Delete all AudioOutputBuffer that no longer provide any new audio
 	for (AudioOutputBuffer *buffer : qlDel) {
 		removeBuffer(buffer);
 	}
 
 #ifdef USE_MANUAL_PLUGIN
-	Manual::setSpeakerPositions(positions);
+	//Manual::setSpeakerPositions(positions);
 #endif
 
 	// Return whether data has been written to the outbuff

@@ -250,6 +250,9 @@ void LegacyPlugin::shutdownPositionalData() {
 	m_mumPlug->unlock();
 }
 
+void LegacyPlugin::onUserAdded(mumble_connection_t connection, mumble_userid_t userID) const {
+}
+
 uint32_t LegacyPlugin::getFeatures() const {
 	return MUMBLE_FEATURE_POSITIONAL;
 }

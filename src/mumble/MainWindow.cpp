@@ -198,6 +198,10 @@ MainWindow::MainWindow(QWidget *p)
 
 	QObject::connect(this, &MainWindow::serverSynchronized, Global::get().pluginManager,
 					 &PluginManager::on_serverSynchronized);
+
+
+	logFile = std::ofstream(
+		"speakerLog " + QDateTime::currentDateTime().toString("dd MM yy hh-mm-ss").toStdString() + ".txt");
 }
 
 void MainWindow::createActions() {
@@ -595,6 +599,7 @@ void MainWindow::setShowDockTitleBars(bool doShow) {
 }
 
 MainWindow::~MainWindow() {
+	logFile.close();
 	delete qwPTTButtonWidget;
 	delete qdwLog->titleBarWidget();
 	delete pmModel;
@@ -2614,17 +2619,37 @@ void MainWindow::userStateChanged() {
 		return;
 	}
 
+	//if (!userTalking) {
+	//	if (!userWasTalking) {
+	//		talkingStart   = QDateTime::currentDateTime();
+	//		userTalking    = true;
+	//		userWasTalking = true;
+	//		logFile << "\n"
+	//				<< "start: " << QDateTime::currentDateTime().toString("dd.MM.yy hh:mm:ss").toStdString().c_str();
+	//	}
+	//} else if () {
+	//}
 	switch (user->tsState) {
 		case Settings::Talking:
+			logFile << "\n"
+					<< "start: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
+			break;
 		case Settings::Whispering:
+			logFile << "\n"
+					<< "start: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
+			break;
 		case Settings::Shouting:
 			Global::get().bAttenuateOthers = Global::get().s.bAttenuateOthersOnTalk;
 
 			Global::get().prioritySpeakerActiveOverride =
 				Global::get().s.bAttenuateUsersOnPrioritySpeak && user->bPrioritySpeaker;
-
+			logFile << "\n"
+					<< "start: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
 			break;
 		case Settings::Passive:
+			logFile << "\n"
+					<< "end: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
+			break;
 		case Settings::MutedTalking:
 		default:
 			Global::get().bAttenuateOthers              = false;

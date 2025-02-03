@@ -9,6 +9,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QThread>
 #include <boost/shared_ptr.hpp>
+#include "BRTLibrary.h"
 
 #include "MumbleProtocol.h"
 
@@ -81,6 +82,11 @@ private:
 	float *fStereoPanningFactor = nullptr;
 	void removeBuffer(AudioOutputBuffer *);
 
+	#define HRTFRESAMPLINGSTEP 15
+	bool AudioOutput::setHRTF(std::string &newPath);
+	//FILE *stream;
+	//std::ofstream logFile;
+
 private slots:
 	void handleInvalidatedBuffer(AudioOutputBuffer *);
 	void handlePositionedBuffer(AudioOutputBuffer *, float x, float y, float z);
@@ -93,8 +99,28 @@ protected:
 	unsigned int iChannels                          = 0;
 	unsigned int iSampleSize                        = 0;
 	unsigned int iBufferSize                        = 0;
+	bool initialized                                = false;
+	std::mutex BRTmutex;
 	QReadWriteLock qrwlOutputs;
 	QMultiHash< const ClientUser *, AudioOutputBuffer * > qmOutputs;
+
+	Common::CGlobalParameters globalParameters;
+	BRTBase::CBRTManager envManager;
+	std::shared_ptr< BRTListenerModel::CListenerHRTFbasedModel > envListener;
+	//std::shared_ptr< BRTEnvironmentModel::CFreeFieldEnvironmentModel > freeEnv;
+	QHash<unsigned int, std::shared_ptr< BRTSourceModel::CSourceSimpleModel > > envSources;
+	Common::CTransform tempTransform;
+	//std::vector< CMonoBuffer< float > > envSourceBuffers;
+	QMultiHash< ClientUser *, bool > connectedUsers;
+	Common::CEarPair< CMonoBuffer< float > > bufferProcessed;
+	BRTReaders::CSOFAReader sofaReader;
+	std::shared_ptr< BRTServices::CHRTF > hrtf_loaded;
+	std::vector<float> listenerRotationQuat;
+	std::vector<std::vector<float>> a;
+	bool newInstance = false;
+
+	QHash< unsigned int, Position3D > userPos;
+	QHash< unsigned int, CMonoBuffer< float > > userBuffer;
 
 #ifdef USE_MANUAL_PLUGIN
 	QHash< unsigned int, Position2D > positions;
