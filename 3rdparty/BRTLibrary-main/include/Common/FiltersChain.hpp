@@ -8,16 +8,18 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
-* \b Project: SONICOM ||
-* \b Website: https://www.sonicom.eu/
+* \b Project: 3D Tune-In (https://www.3dtunein.eu) and SONICOM (https://www.sonicom.eu/) ||
 *
-* \b Copyright: University of Malaga 2023. Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit) with Copyright University of Malaga and Imperial College London - 2018
-*
+* \b Acknowledgement: This project has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreements no. 644051 and no. 101017743
+* 
+* This class is part of the Binaural Rendering Toolbox (BRT), coordinated by A. Reyes-Lecuona (areyes@uma.es) and L. Picinali (l.picinali@imperial.ac.uk)
+* Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit).
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
 
 #ifndef _CFILTERS_CHAIN_HPP_
@@ -122,11 +124,18 @@ namespace Common {
 		void Process(CMonoBuffer <float> & buffer)
 		{
 			//SET_RESULT(RESULT_OK, "");
-			for (std::size_t c = 0; c < filters.size(); c++)
+			/*for (std::size_t c = 0; c < filters.size(); c++)
 			{
 				std::shared_ptr<CBiquadFilter> f = filters[c];
 				if (f != NULL)
 					f->Process(buffer);
+			}*/
+
+			for (std::shared_ptr<CBiquadFilter> itFilter : filters) {
+				if (itFilter != nullptr)
+				{
+					itFilter->Process(buffer);
+				}
 			}
 		}
 
@@ -136,14 +145,14 @@ namespace Common {
 		*	\param [in] coefficients vector of ordered coefficients for all biquads in the chain				
 		*   \eh Nothing is reported to the error handler.
 		*/
-		void SetFromCoefficientsVector(TFiltersChainCoefficients& coefficients)
+		void SetFromCoefficientsVector(TFiltersChainCoefficients& coefficients, bool _crossfadingEnabled = true)
 		{
 			if (coefficients.size() == filters.size())
 			{
 				// Set existing filters
 				for (int i = 0; i < coefficients.size(); i++)
 				{
-					filters[i]->SetCoefficients(coefficients[i]);
+					filters[i]->Setup(coefficients[i], _crossfadingEnabled);
 				}
 			}
 			else
@@ -153,8 +162,16 @@ namespace Common {
 				for (int i = 0; i < coefficients.size(); i++)
 				{
 					std::shared_ptr<Common::CBiquadFilter> newBiquad = AddFilter();
-					newBiquad->SetCoefficients(coefficients[i]);
+					newBiquad->Setup(coefficients[i]);
 				}
+			}
+		}
+		
+
+		void ResetBuffers() {			
+			for (int i = 0; i < filters.size(); i++)
+			{
+				filters[i]->ResetBuffers();
 			}
 		}
 
@@ -162,8 +179,8 @@ namespace Common {
 		////////////////////////
 		// PRIVATE ATTRIBUTES
 		////////////////////////
-		std::vector<std::shared_ptr<CBiquadFilter>> filters;                      // Hold the filters in the chain. 
-																		// Indexes indicate the order within the chain.
+		std::vector<std::shared_ptr<CBiquadFilter>> filters;                    // Hold the filters in the chain. 
+																				// Indexes indicate the order within the chain.
 	};
 }//end namespace Common
 #endif

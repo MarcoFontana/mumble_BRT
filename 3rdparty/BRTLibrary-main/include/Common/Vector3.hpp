@@ -8,16 +8,18 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
-* \b Project: SONICOM ||
-* \b Website: https://www.sonicom.eu/
+* \b Project: 3D Tune-In (https://www.3dtunein.eu) and SONICOM (https://www.sonicom.eu/) ||
 *
-* \b Copyright: University of Malaga 2023. Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit) with Copyright University of Malaga and Imperial College London - 2018
-*
+* \b Acknowledgement: This project has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreements no. 644051 and no. 101017743
+* 
+* This class is part of the Binaural Rendering Toolbox (BRT), coordinated by A. Reyes-Lecuona (areyes@uma.es) and L. Picinali (l.picinali@imperial.ac.uk)
+* Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit).
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
 
 #ifndef _CVECTOR3_HPP_
@@ -29,12 +31,13 @@
 #include <Common/ErrorHandler.hpp>
 #include <Common/Conventions.hpp>
 #include <string>
+#include <vector>
 
 const double PI_D = 3.141592653589793238463;
 const float  PI_F = 3.14159265358979f;
 //const float  M_PI = 3.14159265358979f;
 //#define M_PI 3.14159265358979			// TODO change this //TO FIXME
-constexpr double _2PI = 2.0 * M_PI;
+constexpr float _2PI = 2.0f * M_PI;
 
 
 namespace Common {
@@ -105,6 +108,23 @@ namespace Common {
 			z = _z;
 		}
 
+		/**
+		 * @brief Constructor from vector of size 3.
+		 * @param _inVector Input vector, must be exactly size 3.
+		 */
+		CVector3(std::vector<double> _vector)
+		{
+			if (_vector.size() != 3)
+			{
+				SET_RESULT(RESULT_ERROR_INVALID_PARAM, "Vector size is not 3");
+				return;
+			}
+			x = _vector[0];
+			y = _vector[1];
+			z = _vector[2];
+		}
+
+
 		//
 		// Get methods
 		//
@@ -132,6 +152,20 @@ namespace Common {
 
 			//return (x*x + y*y + z*z);
 			return (x * x + y * y + z * z);
+		}
+		
+		/**
+		 * @brief Normalize the vector
+		 * @return return the vector normalized
+		 */
+		CVector3 Normalize() {
+			float distance = GetDistance();
+			if (distance == 0.0f)
+			{
+				SET_RESULT(RESULT_ERROR_DIVBYZERO, "Distance from source to listener is zero");
+				return CVector3::ZERO();
+			}
+			return CVector3(x / distance, y / distance, z / distance);
 		}
 
 		/** \brief Get elevation in radians
@@ -434,6 +468,12 @@ namespace Common {
 		const CVector3 operator+(CVector3 const _rightHand) const
 		{
 			return CVector3(x + _rightHand.x, y + _rightHand.y, z + _rightHand.z);
+		}
+
+		/** \brief Component-wise multiplication
+		*/
+		const CVector3 operator*(float _scalar) const {
+			return CVector3(x * _scalar, y * _scalar, z * _scalar);
 		}
 
 		/** \brief Component-wise equal to 

@@ -8,16 +8,18 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
-* \b Project: SONICOM ||
-* \b Website: https://www.sonicom.eu/
+* \b Project: 3D Tune-In (https://www.3dtunein.eu) and SONICOM (https://www.sonicom.eu/) ||
 *
-* \b Copyright: University of Malaga 2023. Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit) with Copyright University of Malaga and Imperial College London - 2018
-*
+* \b Acknowledgement: This project has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreements no. 644051 and no. 101017743
+* 
+* This class is part of the Binaural Rendering Toolbox (BRT), coordinated by A. Reyes-Lecuona (areyes@uma.es) and L. Picinali (l.picinali@imperial.ac.uk)
+* Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit).
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
 
 #ifndef _CBUFFER_H_
@@ -38,11 +40,9 @@ namespace Common {
 
 	/** \details This is a template class to manage audio streamers and buffers
 	*/
-	template <
-		unsigned int NChannels,
-		class stored
-	>
-		class CBuffer : public std::vector<stored, std::allocator<stored>>
+	template <unsigned int NChannels, class stored>
+	
+	class CBuffer : public std::vector<stored, std::allocator<stored>>
 	{
 	public:
 		using std::vector<stored>::vector;    //   inherit all std::vector constructors
@@ -553,6 +553,32 @@ namespace Common {
 				{
 					sum += (*it)[i];
 				}
+				this->push_back(sum);
+			}
+		}
+
+		void SetFromMix(std::vector <CBuffer> sourceBuffers)
+		{
+			// Get size of all sourceBuffers and check they are the same
+			size_t bufferSize = 0;
+			for (typename std::vector<CBuffer>::iterator it = sourceBuffers.begin(); it != sourceBuffers.end(); ++it)
+			{
+				if (bufferSize == 0)
+					bufferSize = (*it).size();
+				ASSERT((*it).size() == bufferSize, RESULT_ERROR_BADSIZE, "Attempt to mix buffers with different sizes", "");
+			}
+
+			// Iterate through all samples
+			this->clear();
+			for (int i = 0; i < bufferSize; i++)
+			{
+				// Iterate through all source buffers
+				float sum = 0.0f;
+				for (typename std::vector<CBuffer>::iterator it = sourceBuffers.begin(); it != sourceBuffers.end(); ++it)
+				{
+					sum += (*it)[i];
+				}
+				//sum = sum / sourceBuffers.size();
 				this->push_back(sum);
 			}
 		}

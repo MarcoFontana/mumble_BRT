@@ -1,4 +1,4 @@
-/**
+ï»¿/**
 * \class CSourceDirectivityModel
 *
 * \brief Declaration of CSourceDirectivityModel class
@@ -8,120 +8,125 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
 * \b Project: SONICOM ||
 * \b Website: https://www.sonicom.eu/
 *
-* \b Copyright: University of Malaga
-*
+* \b Acknowledgement: This project has received funding from the European Unionï¿½s Horizon 2020 research and innovation programme under grant agreement no.101017743
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
 
 #ifndef _SOUND_SOURCE_DIRECTIVITY_MODEL_HPP
 #define _SOUND_SOURCE_DIRECTIVITY_MODEL_HPP
 
 #include <vector>
-#include <Base/SourceModelBase.hpp>
-#include <ProcessingModules/SRTFConvolver.hpp>
-#include <ServiceModules/SRTF.hpp>
+#include <SourceModels/SourceModelBase.hpp>
+#include <ProcessingModules/DirectivityTFConvolver.hpp>
+#include <ServiceModules/DirectivityTF.hpp>
 
 namespace BRTSourceModel {
-	class CSourceDirectivityModel : public BRTBase::CSourceModelBase, BRTProcessing::CSRTFConvolver {
+	class CSourceDirectivityModel : public CSourceModelBase, BRTProcessing::CDirectivityTFConvolver {
 
 	public:			
-		CSourceDirectivityModel(std::string _sourceID) : BRTBase::CSourceModelBase(_sourceID) {
-			//CreateListenerTransformEntryPoint("listenerPosition");
+		CSourceDirectivityModel(std::string _sourceID)
+			: CSourceModelBase(_sourceID, TSourceType::Directivity) {			
 			CreatePositionEntryPoint("listenerPosition");
 		}
 
-		void Update(std::string _entryPointID) {
+	
+		/** \brief SET DirectivityTF of source
+		*	\param[in] pointer to DirectivityTF to be stored
+		*   \eh On error, NO error code is reported to the error handler.
+		*/
+		bool SetDirectivityTF(std::shared_ptr< BRTServices::CDirectivityTF > _sourceDirectivityTF) override {			
+			sourceDirectivityTF = _sourceDirectivityTF;						
+			ResetSourceConvolutionBuffers();
+			return true;
+		}
+
+		/**
+		 * @brief Get the source directivity transfer function
+		 * @return shered pointer to the directivity of the source model
+		*/
+		std::shared_ptr<BRTServices::CDirectivityTF> GetDirectivityTF() override {
+			return sourceDirectivityTF;
+		}
+
+		/**
+		 * @brief Remove the shared pointer of the directivity TF
+		*/
+		void RemoveDirectivityTF() override {
+			sourceDirectivityTF = std::make_shared<BRTServices::CDirectivityTF>();			
+		}
+
+		/**
+		 * @brief Enable or disable directivity for the source model
+		 * @param _enabled boolean true if you want to enable the directivity, false if disable
+		*/
+		// TODO: Move to command
+		void SetDirectivityEnable(bool _enabled) override {
+			if (_enabled) { EnableSourceDirectionality(); }
+			else { DisableSourceDirectionality(); }
+		}
+		
+	private:	
+
+		/**
+		 * @brief Update method of the Source directivity model
+		 * @param _entryPointID ID of the entry ponint to do the update
+		*/
+		void Update(std::string _entryPointID) override {
 			std::lock_guard<std::mutex> l(mutex);
 
 			if (_entryPointID == "samples") {
 
 				CMonoBuffer<float> outBuffer;
 				CMonoBuffer<float> inBuffer = GetBuffer();
-				Common::CTransform sourcePosition = GetCurrentSourceTransform();
+				Common::CTransform sourcePosition = GetSourceTransform();
 				Common::CTransform listenerPosition = GetPositionEntryPoint("listenerPosition")->GetData();
 				if (inBuffer.size() != 0) {
-					Process(inBuffer, outBuffer, sourcePosition, listenerPosition, sourceSRTF);
+					Process(inBuffer, outBuffer, sourcePosition, listenerPosition, sourceDirectivityTF);
 					SendData(outBuffer);
 				}
-			}			
+			}
 		}
-				
-		void UpdateCommand() {
-			std::lock_guard<std::mutex> l(mutex);
-			BRTBase::CCommand command = GetCommandEntryPoint()->GetData();
-			
+
+		/**
+		* @brief Implementation of the virtual method for processing the received commands
+		* The SourceModelBase class already handles the common commands. Here you have to manage the specific ones.
+		*/
+		void UpdateCommandSource() override {
+			BRTConnectivity::CCommand command = GetCommandEntryPoint()->GetData();
+
 			if (IsToMySoundSource(command.GetStringParameter("sourceID"))) {
-				if (command.GetCommand() == "/source/location") {
-					Common::CVector3 location = command.GetVector3Parameter("location");										
-					Common::CTransform sourceTransform = GetCurrentSourceTransform();
-					sourceTransform.SetPosition(location);
-					SetSourceTransform(sourceTransform);
-				}
-				else if (command.GetCommand() == "/source/orientation") {
-					Common::CVector3 orientationYawPitchRoll = command.GetVector3Parameter("orientation");										
-					Common::CQuaternion orientation;
-					orientation = orientation.FromYawPitchRoll(orientationYawPitchRoll.x, orientationYawPitchRoll.y, orientationYawPitchRoll.z);
-					
-					Common::CTransform sourceTransform = GetCurrentSourceTransform();
-					sourceTransform.SetOrientation(orientation);
-					SetSourceTransform(sourceTransform);
-				}
-				else if (command.GetCommand() == "/source/orientationQuaternion") {
-					Common::CQuaternion orientation = command.GetQuaternionParameter("orientation");
-					Common::CTransform sourceTransform = GetCurrentSourceTransform();
-					sourceTransform.SetOrientation(orientation);
-					SetSourceTransform(sourceTransform);
-				}
-				else if(command.GetCommand() == "/source/enableDirectivity") {
-					if (command.GetBoolParameter("enable")) { EnableSourceDirectionality(); }
-					else { DisableSourceDirectionality(); }
+				if (command.GetCommand() == "/source/enableDirectivity") {
+					if (command.GetBoolParameter("enable")) {
+						EnableSourceDirectionality();
+					} else {
+						DisableSourceDirectionality();
+					}
 				} else if (command.GetCommand() == "/source/resetBuffers") {
 					ResetSourceConvolutionBuffers();
 				}
 			}
 		}
 
-		/** \brief SET SRTF of source
-		*	\param[in] pointer to SRTF to be stored
-		*   \eh On error, NO error code is reported to the error handler.
+		/**
+		 * @brief Reset the buffers used in the convolution of the directivity
 		*/
-		bool SetSRTF(std::shared_ptr< BRTServices::CSRTF > _sourceSRTF) {			
-			if (_sourceSRTF->GetSamplingRate() != globalParameters.GetSampleRate()) {
-				SET_RESULT(RESULT_ERROR_NOTSET, "This SRTF has not been assigned to the source. The sample rate of the SRTF does not match the one set in the library Global Parameters.");
-				return false;
-			}			
-			sourceSRTF = _sourceSRTF;						
+		// TODO Move to command
+		void ResetBuffers() override {
 			ResetSourceConvolutionBuffers();
 		}
 
-		std::shared_ptr< BRTServices::CSRTF > GetSRFT() {
-			return sourceSRTF;
-		}
-
-		void RemoveSRTF() {
-			sourceSRTF = std::make_shared<BRTServices::CSRTF>();	// empty HRTF		
-		}
-
-		// TODO Move to command
-		void SetDirectivityEnable(bool _enabled) {
-			if (_enabled) { EnableSourceDirectionality(); }
-			else { DisableSourceDirectionality(); }
-		}
-		// TODO Move to command
-		void ResetBuffers() {
-			ResetSourceConvolutionBuffers();
-		}
-
-	private:		
-		mutable std::mutex mutex;
-		std::shared_ptr<BRTServices::CSRTF> sourceSRTF;			// SHRTF of source
+		////////////////
+		// Attributes
+		/////////////// 		
+		std::shared_ptr<BRTServices::CDirectivityTF> sourceDirectivityTF;			// Directivity of the source
 		Common::CGlobalParameters globalParameters;
 		
 	};

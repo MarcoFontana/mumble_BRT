@@ -8,21 +8,25 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
-* \b Project: SONICOM ||
-* \b Website: https://www.sonicom.eu/
+* \b Project: 3D Tune-In (https://www.3dtunein.eu) and SONICOM (https://www.sonicom.eu/) ||
 *
-* \b Copyright: University of Malaga 2023. Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit) with Copyright University of Malaga and Imperial College London - 2018
-*
+* \b Acknowledgement: This project has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreements no. 644051 and no. 101017743
+* 
+* This class is part of the Binaural Rendering Toolbox (BRT), coordinated by A. Reyes-Lecuona (areyes@uma.es) and L. Picinali (l.picinali@imperial.ac.uk)
+* Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit).
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
+
 #ifndef _COMMON_DEFINITIONS_HPP_
 #define _COMMON_DEFINITIONS_HPP_
 
 #include <cmath>
+#include <Common/Vector3.hpp>
 
 namespace Common {
 
@@ -61,6 +65,15 @@ namespace Common {
 		T right;	///< right channel
 	};
 
+	static bool AreSameDouble(double a, double b, double epsilon)
+	{
+		//float absA = fabs(a);
+		//float absB = fabs(b);
+		float diff = std::fabs(a - b);
+
+		return diff < epsilon;
+	}
+
 	static bool AreSame(float a, float b, float epsilon)
 	{
 		//float absA = fabs(a);
@@ -68,6 +81,11 @@ namespace Common {
 		float diff = std::fabs(a - b);
 
 		return diff < epsilon;
+	}
+
+	static bool AreSame(Common::CVector3 a, Common::CVector3 b, float epsilon)
+	{
+		return AreSame(a.x, b.x, epsilon) && AreSame(a.y, b.y, epsilon) && AreSame(a.z, b.z, epsilon);
 	}
 
 	/** \brief This method check if a number is a power of 2

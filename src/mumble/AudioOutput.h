@@ -106,7 +106,8 @@ protected:
 
 	Common::CGlobalParameters globalParameters;
 	BRTBase::CBRTManager envManager;
-	std::shared_ptr< BRTListenerModel::CListenerHRTFbasedModel > envListener;
+	std::shared_ptr< BRTListenerModel::CListenerHRTFModel > envListener;
+	std::shared_ptr< BRTBase::CListener > listener;
 	//std::shared_ptr< BRTEnvironmentModel::CFreeFieldEnvironmentModel > freeEnv;
 	QHash<unsigned int, std::shared_ptr< BRTSourceModel::CSourceSimpleModel > > envSources;
 	Common::CTransform tempTransform;

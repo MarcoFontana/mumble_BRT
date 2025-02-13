@@ -86,8 +86,10 @@ AudioOutput::AudioOutput() /* : envSources(5), envSourceBuffers(5) */ {
 
 	envManager.BeginSetup();
 	//freeEnv     = envManager.CreateEnvironment< BRTEnvironmentModel::CFreeFieldEnvironmentModel >("env");
-	envListener = envManager.CreateListener < BRTListenerModel::CListenerHRTFbasedModel> ("listener");
+	envListener = envManager.CreateListenerModel< BRTListenerModel::CListenerHRTFModel> ("listenerModel");
+	listener    = envManager.CreateListener< BRTBase::CListener >("listener");
 	//envListener->ConnectEnvironmentModel("env");
+	listener->ConnectListenerModel("listenerModel");
 	envManager.EndSetup();
 	newInstance = true;
 
@@ -273,7 +275,7 @@ void AudioOutput::removeBuffer(AudioOutputBuffer *buffer) {
 
 bool AudioOutput::setHRTF(std::string &newPath) {
 	std::shared_ptr< BRTServices::CHRTF > temp_hrtf_loaded = std::make_shared< BRTServices::CHRTF >();
-	bool result = sofaReader.ReadHRTFFromSofa(newPath, temp_hrtf_loaded, HRTFRESAMPLINGSTEP/*, BRTServices::TEXTRAPOLATION_METHOD::nearest_point*/);
+	bool result = sofaReader.ReadHRTFFromSofa(newPath, temp_hrtf_loaded, HRTFRESAMPLINGSTEP, BRTServices::TEXTRAPOLATION_METHOD::nearest_point);
 
 	if (result) {
 		envListener->RemoveHRTF();
@@ -480,7 +482,7 @@ void AudioOutput::initializeMixer(const unsigned int *chanmasks, bool forceheadp
 			//setHRTF(sofa_path);
 
 			tempTransform.SetPosition(Common::CVector3(0, 0, 0));
-			envListener->SetListenerTransform(tempTransform);
+			listener->SetListenerTransform(tempTransform);
 			initialized = true;
 		} else {
 
@@ -1036,19 +1038,19 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 			tempTransform.SetPosition(Common::CVector3(ownPos.z, -ownPos.x, ownPos.y));
 			tempTransform.SetOrientation(Common::CQuaternion(listenerRotationQuat[0], listenerRotationQuat[3],
 															 listenerRotationQuat[1], listenerRotationQuat[2]));
-			envListener->SetListenerTransform(tempTransform);
+			listener->SetListenerTransform(tempTransform);
 			tempTransform.SetOrientation(Common::CQuaternion());
 
 		} else {
 
 			Position3D ownPos = Global::get().pluginManager->getPositionalData().getCameraPos();
 			tempTransform.SetPosition(Common::CVector3(ownPos.z, -ownPos.x, ownPos.y));
-			envListener->SetListenerTransform(tempTransform);
+			listener->SetListenerTransform(tempTransform);
 		
 		}
 
 		envManager.ProcessAll();
-		envListener->GetBuffers(bufferProcessed.left, bufferProcessed.right);
+		listener->GetBuffers(bufferProcessed.left, bufferProcessed.right);
 		float *RESTRICT o = output;
 		if (nchan >= 2) {
 			for (unsigned int i = 0; i < frameCount; ++i) {

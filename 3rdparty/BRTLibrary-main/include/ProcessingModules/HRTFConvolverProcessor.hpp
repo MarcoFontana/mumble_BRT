@@ -1,4 +1,4 @@
-/**
+ï»¿/**
 * \class CHRTFConvolverProcessor
 *
 * \brief Declaration of CHRTFConvolverProcessor class
@@ -8,31 +8,34 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
 * \b Project: SONICOM ||
 * \b Website: https://www.sonicom.eu/
 *
-* \b Copyright: University of Malaga
-*
+* \b Acknowledgement: This project has received funding from the European Unionï¿½s Horizon 2020 research and innovation programme under grant agreement no.101017743
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
+
 #ifndef HRTF_CONVOLVER_PROCESSOR_
 #define HRTF_CONVOLVER_PROCESSOR_
 
-#include <Base/ProcessorBase.hpp>
-#include <Base/EntryPoint.hpp>
-#include <Common/UPCAnechoic.hpp>
-#include <Common/Buffer.hpp>
-#include <ProcessingModules/HRTFConvolver.hpp>
 #include <memory>
 #include <vector>
 #include <algorithm>
+#include <Connectivity/BRTConnectivity.hpp>
+#include <ProcessingModules/UniformPartitionedConvolution.hpp>
+#include <Common/Buffer.hpp>
+#include <ServiceModules/ServicesBase.hpp>
+#include <ServiceModules/HRBRIR.hpp>
+#include <ProcessingModules/HRTFConvolver.hpp>
+
 
 namespace BRTProcessing {
-    class CHRTFConvolverProcessor : public BRTBase::CProcessorBase, CHRTFConvolver {
+class CHRTFConvolverProcessor : public BRTConnectivity::CBRTConnectivity, public CHRTFConvolver {
 		
     public:
 		CHRTFConvolverProcessor() {
@@ -41,6 +44,7 @@ namespace BRTProcessing {
             CreatePositionEntryPoint("sourcePosition");
 			CreatePositionEntryPoint("listenerPosition");           
 			CreateHRTFPtrEntryPoint("listenerHRTF");
+			CreateHRBRIRPtrEntryPoint("listenerHRBRIR");
 
 			CreateIDEntryPoint("sourceID");
 			CreateIDEntryPoint("listenerID");
@@ -49,48 +53,69 @@ namespace BRTProcessing {
             CreateSamplesExitPoint("rightEar");   									
         }
 
-        void Update(std::string _entryPointId) {            
-			
+		/**
+		 * @brief Implementation of CAdvancedEntryPointManager virtual method
+		*/
+		void AllEntryPointsAllDataReady() override {
+
 			std::lock_guard<std::mutex> l(mutex);
 
 			CMonoBuffer<float> outLeftBuffer;
 			CMonoBuffer<float> outRightBuffer;
 
-			if (_entryPointId == "inputSamples") {
-				CMonoBuffer<float> buffer = GetSamplesEntryPoint("inputSamples")->GetData();
-				Common::CTransform sourcePosition = GetPositionEntryPoint("sourcePosition")->GetData();
-				Common::CTransform listenerPosition = GetPositionEntryPoint("listenerPosition")->GetData();												
-				std::weak_ptr<BRTServices::CHRTF> listenerHRTF = GetHRTFPtrEntryPoint("listenerHRTF")->GetData();
-				if (buffer.size() != 0) {
+			//if (_entryPointId == "inputSamples") {
+			CMonoBuffer<float> buffer = GetSamplesEntryPoint("inputSamples")->GetData();
+
+			if (buffer.size() == 0) { return; }
+
+			Common::CTransform sourcePosition = GetPositionEntryPoint("sourcePosition")->GetData();
+			Common::CTransform listenerPosition = GetPositionEntryPoint("listenerPosition")->GetData();
+			
+			// Check process flag
+			if (!CHRTFConvolver::IsSpatializationEnabled())
+			{
+				outLeftBuffer = buffer;
+				outRightBuffer = buffer;				
+			}
+			else {
+				std::weak_ptr<BRTServices::CServicesBase> listenerHRTF = GetHRTFPtrEntryPoint("listenerHRTF")->GetData();
+				std::weak_ptr<BRTServices::CServicesBase> listenerHRBRIR = GetHRBRIRPtrEntryPoint("listenerHRBRIR")->GetData();
+
+				if (listenerHRTF.lock() != nullptr) { 
 					Process(buffer, outLeftBuffer, outRightBuffer, sourcePosition, listenerPosition, listenerHRTF);
-					GetSamplesExitPoint("leftEar")->sendData(outLeftBuffer);
-					GetSamplesExitPoint("rightEar")->sendData(outRightBuffer);
-				}				
-				this->resetUpdatingStack();				
-			}            
+				} else if (listenerHRBRIR.lock() != nullptr) {				
+					Process(buffer, outLeftBuffer, outRightBuffer, sourcePosition, listenerPosition, listenerHRBRIR);
+				} else {
+					SET_RESULT(RESULT_ERROR_NOTSET, "HRTF Convolver error: No HRTF or HRBRIR data available");
+					return;
+				}
+			}	
+			GetSamplesExitPoint("leftEar")->sendData(outLeftBuffer);
+			GetSamplesExitPoint("rightEar")->sendData(outRightBuffer);				
         }
 
-		void UpdateCommand() {					
+		void UpdateCommand() override {					
 			
 			std::lock_guard<std::mutex> l(mutex);
-			BRTBase::CCommand command = GetCommandEntryPoint()->GetData();
-															
-			//if (IsToMyListener(command.GetStringParameter("listenerID"))) { 
-				if (command.GetCommand() == "/listener/enableSpatialization") {					
+			BRTConnectivity::CCommand command = GetCommandEntryPoint()->GetData();
+			if (command.isNull() || command.GetCommand() == "") { return; }
+
+			if (IsToMyListener(command.GetStringParameter("listenerID"))) { 
+				if (command.GetCommand() == "/HRTFConvolver/enableSpatialization") {					
 					if (command.GetBoolParameter("enable")) { EnableSpatialization(); }
 					else { DisableSpatialization(); }
 				}
-				else if (command.GetCommand() == "/listener/enableInterpolation") {					
+				else if (command.GetCommand() == "/HRTFConvolver/enableInterpolation") {					
 					if (command.GetBoolParameter("enable")) { EnableInterpolation(); }
 					else { DisableInterpolation(); }
 				}
-				else if (command.GetCommand() == "/listener/resetBuffers") {
+				else if (command.GetCommand() == "/HRTFConvolver/resetBuffers") {
 					ResetSourceConvolutionBuffers();					
 				}
-			//}
+			}
 
 			if (IsToMySoundSource(command.GetStringParameter("sourceID"))) {
-				if (command.GetCommand() == "/source/HRTFConvolver/resetBuffers") {
+				if (command.GetCommand() == "/source/resetBuffers") {
 					ResetSourceConvolutionBuffers();
 				}
 			}

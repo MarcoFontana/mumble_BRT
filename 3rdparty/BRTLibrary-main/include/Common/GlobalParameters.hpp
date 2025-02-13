@@ -8,17 +8,20 @@
 * Coordinated by , A. Reyes-Lecuona (University of Malaga)||
 * \b Contact: areyes@uma.es
 *
+* \b Copyright: University of Malaga
+* 
 * \b Contributions: (additional authors/contributors can be added here)
 *
-* \b Project: SONICOM ||
-* \b Website: https://www.sonicom.eu/
+* \b Project: 3D Tune-In (https://www.3dtunein.eu) and SONICOM (https://www.sonicom.eu/) ||
 *
-* \b Copyright: University of Malaga 2023. Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit) with Copyright University of Malaga and Imperial College London - 2018
-*
+* \b Acknowledgement: This project has received funding from the European Union's Horizon 2020 research and innovation programme under grant agreements no. 644051 and no. 101017743
+* 
+* This class is part of the Binaural Rendering Toolbox (BRT), coordinated by A. Reyes-Lecuona (areyes@uma.es) and L. Picinali (l.picinali@imperial.ac.uk)
+* Code based in the 3DTI Toolkit library (https://github.com/3DTune-In/3dti_AudioToolkit).
+* 
 * \b Licence: This program is free software, you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-*
-* \b Acknowledgement: This project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement no.101017743
 */
+
 #ifndef _CGLOBAL_PARAMETERS_HPP_
 #define _CGLOBAL_PARAMETERS_HPP_
 
@@ -54,9 +57,6 @@
 #ifndef ATTACK_TIME_DISTANCE_ATTENUATION
 #define ATTACK_TIME_DISTANCE_ATTENUATION 100			///< Attack time for gradual attenuation in simple attenuation distance (used in ApplyGainExponentially method)
 #endif
-#ifndef DEFAULT_LISTENER_HEAD_RADIOUS
-#define DEFAULT_LISTENER_HEAD_RADIOUS  0.0875f
-#endif 
 #ifndef MINIMUM_DISTANCE_SOURCE_LISTENER
 #define MINIMUM_DISTANCE_SOURCE_LISTENER 0.0001f		///< Minimun distance allowed betwwen source and listener in metres. It only serves to solve the numerical problem
 #endif 
@@ -97,7 +97,7 @@ namespace Common {
 
 		}
 		// Get buffer size
-		int GetBufferSize()	{ return bufferSize; }				
+		int GetBufferSize()	const { return bufferSize; }				
 
 		void SetSampleRate(int _sampleRate) {
 			sampleRate = _sampleRate;
