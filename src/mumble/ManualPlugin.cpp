@@ -20,7 +20,7 @@
 #include "../../plugins/mumble_legacy_plugin.h"
 
 static QPointer< Manual > mDlg = nullptr;
-static bool bLinkable          = false;
+static bool bLinkable          = true;
 static bool bActive            = true;
 
 static int iAzimuth   = 0;
@@ -32,8 +32,11 @@ std::vector< unsigned int > Manual::bufferToBeDeleted = {};
 std::mutex Manual::bufferLock;
 QString Manual::hrtfPath;
 bool Manual::hrtfChanged = false;
+bool Manual::isMono      = false;
 #define HALF_ROOM_SIZE 10.0
 #define ROOM_SIZE (HALF_ROOM_SIZE * 2)
+
+
 
 static struct {
 	float avatar_pos[3];
@@ -119,12 +122,16 @@ Manual::Manual(QWidget *p) : QDialog(p) {
 
 	preset_layout_combobox->addItem("No spatial");
 	preset_layout_combobox->addItem("Narrow");
-	preset_layout_combobox->addItem("Large");
+	preset_layout_combobox->addItem("Large 30 deg");
+	preset_layout_combobox->addItem("Large 60 deg");
+	preset_layout_combobox->addItem("Large 1 screen outside (56.005 deg)");
 
 	Bottom_left_selector->addItem("Empty", -1);
 	Top_left_selector->addItem("Empty", -1);
 	Bottom_right_selector->addItem("Empty", -1);
 	Top_right_selector->addItem("Empty", -1);
+
+	qpbUnhinge->setEnabled(false);
 
 }
 
@@ -601,7 +608,7 @@ void Manual::updateTopAndFront(int azimuth, int elevation) {
 
 	m_qgiPosition->setRotation(azimuth);
 
-	double azim = azimuth * M_PI / 180.;
+	double azim = -azimuth * M_PI / 180.;
 	double elev = elevation * M_PI / 180.;
 
 	my.avatar_front[0] = static_cast< float >(cos(elev) * sin(azim));
@@ -738,6 +745,7 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 
 	switch (spatializationIndex) {
 		case 0:
+			isMono = true;
 			if (userItem.key(screenSpeakers[0])) {
 				userPos[screenSpeakers[0]].x = 0;
 				userPos[screenSpeakers[0]].y = 0;
@@ -785,10 +793,11 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			break;
 
 		case 1:
+			isMono = false;
 			if (userItem.key(screenSpeakers[0])) {
-				userPos[screenSpeakers[0]].x = -0.29749f;
-				userPos[screenSpeakers[0]].y = -0.1675f;
-				userPos[screenSpeakers[0]].z = 2;
+				userPos[screenSpeakers[0]].x = -0.1531f;
+				userPos[screenSpeakers[0]].y = -0.090675;
+				userPos[screenSpeakers[0]].z = 0.6;
 
 				userItem.key(screenSpeakers[0])
 					->setPos((userPos[screenSpeakers[0]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -797,9 +806,9 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[1])) {
-				userPos[screenSpeakers[1]].x = -0.29749f;
-				userPos[screenSpeakers[1]].y = 0.1675f;
-				userPos[screenSpeakers[1]].z = 2;
+				userPos[screenSpeakers[1]].x = -0.1531f;
+				userPos[screenSpeakers[1]].y = 0.090675;
+				userPos[screenSpeakers[1]].z = 0.6;
 
 				userItem.key(screenSpeakers[1])
 					->setPos((userPos[screenSpeakers[1]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -808,9 +817,9 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[2])) {
-				userPos[screenSpeakers[2]].x = 0.29749f;
-				userPos[screenSpeakers[2]].y = -0.1675f;
-				userPos[screenSpeakers[2]].z = 2;
+				userPos[screenSpeakers[2]].x = 0.1531f;
+				userPos[screenSpeakers[2]].y = -0.090675;
+				userPos[screenSpeakers[2]].z = 0.6;
 
 				userItem.key(screenSpeakers[2])
 					->setPos((userPos[screenSpeakers[2]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -819,9 +828,9 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[3])) {
-				userPos[screenSpeakers[3]].x = 0.29749f;
-				userPos[screenSpeakers[3]].y = 0.1675f;
-				userPos[screenSpeakers[3]].z = 2;
+				userPos[screenSpeakers[3]].x = 0.1531f;
+				userPos[screenSpeakers[3]].y = 0.090675;
+				userPos[screenSpeakers[3]].z = 0.6;
 
 				userItem.key(screenSpeakers[3])
 					->setPos((userPos[screenSpeakers[3]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -831,10 +840,11 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			break;
 
 		case 2:
+			isMono = false;
 			if (userItem.key(screenSpeakers[0])) {
-				userPos[screenSpeakers[0]].x = -1.00618f;
-				userPos[screenSpeakers[0]].y = -0.56651f;
-				userPos[screenSpeakers[0]].z = 2;
+				userPos[screenSpeakers[0]].x = -0.29806f;
+				userPos[screenSpeakers[0]].y = -0.17653f;
+				userPos[screenSpeakers[0]].z = 0.6;
 
 				userItem.key(screenSpeakers[0])
 					->setPos((userPos[screenSpeakers[0]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -843,9 +853,9 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[1])) {
-				userPos[screenSpeakers[1]].x = -1.00618f;
-				userPos[screenSpeakers[1]].y = 0.56651f;
-				userPos[screenSpeakers[1]].z = 2;
+				userPos[screenSpeakers[1]].x = -0.29806f;
+				userPos[screenSpeakers[1]].y = 0.17653f;
+				userPos[screenSpeakers[1]].z = 0.6;
 
 				userItem.key(screenSpeakers[1])
 					->setPos((userPos[screenSpeakers[1]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -854,9 +864,9 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[2])) {
-				userPos[screenSpeakers[2]].x = 1.00618f;
-				userPos[screenSpeakers[2]].y = -0.56651f;
-				userPos[screenSpeakers[2]].z = 2;
+				userPos[screenSpeakers[2]].x = 0.29806f;
+				userPos[screenSpeakers[2]].y = -0.17653f;
+				userPos[screenSpeakers[2]].z = 0.6;
 
 				userItem.key(screenSpeakers[2])
 					->setPos((userPos[screenSpeakers[2]].x / ROOM_SIZE) * visible_scene_rect.width(),
@@ -865,14 +875,109 @@ void Manual::updateScreenPositions(int spatializationIndex) {
 			}
 
 			if (userItem.key(screenSpeakers[3])) {
-				userPos[screenSpeakers[3]].x = 1.00618f;
-				userPos[screenSpeakers[3]].y = 0.56651f;
-				userPos[screenSpeakers[3]].z = 2;
+				userPos[screenSpeakers[3]].x = 0.29806f;
+				userPos[screenSpeakers[3]].y = 0.17653f;
+				userPos[screenSpeakers[3]].z = 0.6;
 
 				userItem.key(screenSpeakers[3])
 					->setPos((userPos[screenSpeakers[3]].x / ROOM_SIZE) * visible_scene_rect.width(),
 								-static_cast< float >((userPos[screenSpeakers[3]].z / ROOM_SIZE)
 													* visible_scene_rect.height()));
+			}
+
+			break;
+		case 3:
+			isMono = false;
+			if (userItem.key(screenSpeakers[0])) {
+				userPos[screenSpeakers[0]].x = -0.89417f;
+				userPos[screenSpeakers[0]].y = -0.52959f;
+				userPos[screenSpeakers[0]].z = 0.6;
+
+				userItem.key(screenSpeakers[0])
+					->setPos((userPos[screenSpeakers[0]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[0]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[1])) {
+				userPos[screenSpeakers[1]].x = -0.89417f;
+				userPos[screenSpeakers[1]].y = 0.52959f;
+				userPos[screenSpeakers[1]].z = 0.6;
+
+				userItem.key(screenSpeakers[1])
+					->setPos((userPos[screenSpeakers[1]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[1]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[2])) {
+				userPos[screenSpeakers[2]].x = 0.89417f;
+				userPos[screenSpeakers[2]].y = -0.52959f;
+				userPos[screenSpeakers[2]].z = 0.6;
+
+				userItem.key(screenSpeakers[2])
+					->setPos((userPos[screenSpeakers[2]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[2]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[3])) {
+				userPos[screenSpeakers[3]].x = 0.89417f;
+				userPos[screenSpeakers[3]].y = 0.52959f;
+				userPos[screenSpeakers[3]].z = 0.6;
+
+				userItem.key(screenSpeakers[3])
+					->setPos((userPos[screenSpeakers[3]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[3]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			break;
+
+			case 4:
+			isMono = false;
+			if (userItem.key(screenSpeakers[0])) {
+				userPos[screenSpeakers[0]].x = -0.7655f;
+				userPos[screenSpeakers[0]].y = -0.453375f;
+				userPos[screenSpeakers[0]].z = 0.6;
+
+				userItem.key(screenSpeakers[0])
+					->setPos((userPos[screenSpeakers[0]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[0]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[1])) {
+				userPos[screenSpeakers[1]].x = -0.7655f;
+				userPos[screenSpeakers[1]].y = 0.453375f;
+				userPos[screenSpeakers[1]].z = 0.6;
+
+				userItem.key(screenSpeakers[1])
+					->setPos((userPos[screenSpeakers[1]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[1]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[2])) {
+				userPos[screenSpeakers[2]].x = 0.7655f;
+				userPos[screenSpeakers[2]].y = -0.453375f;
+				userPos[screenSpeakers[2]].z = 0.6;
+
+				userItem.key(screenSpeakers[2])
+					->setPos((userPos[screenSpeakers[2]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[2]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
+			}
+
+			if (userItem.key(screenSpeakers[3])) {
+				userPos[screenSpeakers[3]].x = 0.7655f;
+				userPos[screenSpeakers[3]].y = 0.453375f;
+				userPos[screenSpeakers[3]].z = 0.6;
+
+				userItem.key(screenSpeakers[3])
+					->setPos((userPos[screenSpeakers[3]].x / ROOM_SIZE) * visible_scene_rect.width(),
+							 -static_cast< float >((userPos[screenSpeakers[3]].z / ROOM_SIZE)
+												   * visible_scene_rect.height()));
 			}
 
 			break;
@@ -900,7 +1005,7 @@ static void config(void *ptr) {
 		mDlg->setParent(w, Qt::Dialog);
 		mDlg->qpbUnhinge->setEnabled(true);
 	} else {
-		mDlg = new Manual(w);
+		mDlg = new Manual(nullptr);
 	}
 
 	mDlg->show();

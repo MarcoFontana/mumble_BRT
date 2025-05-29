@@ -63,6 +63,7 @@ public:
 	static std::mutex bufferLock;
 	static QString hrtfPath;
 	static bool hrtfChanged;
+	static bool isMono;
 
 public slots:
 	void on_qpbUnhinge_pressed();

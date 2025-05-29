@@ -616,6 +616,11 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 		setHRTF(Manual::hrtfPath.toStdString());
 		Manual::hrtfChanged = false;
 	}
+	if (Manual::isMono && envListener->IsSpatializationEnabled()) {
+		envListener->DisableSpatialization();
+	} else if (!Manual::isMono && !envListener->IsSpatializationEnabled()) {
+		envListener->EnableSpatialization();
+	}
 	Manual::bufferLock.unlock();
 #endif
 
@@ -726,9 +731,13 @@ bool AudioOutput::mix(void *outbuff, unsigned int frameCount) {
 			//q2 = (cameraDir.z - cameraAxis.x) / (4 * q0);
 			//q3 = (right.x - cameraDir.y) / (4 * q0);
 
-			a[0] = { right.x, right.y, right.z };
-			a[1] = { cameraAxis.x, cameraAxis.y, cameraAxis.z };
-			a[2] = { cameraDir.x, cameraDir.y, cameraDir.z };
+			//a[0] = { right.x, right.y, right.z };
+			//a[1] = { cameraAxis.x, cameraAxis.y, cameraAxis.z };
+			//a[2] = { cameraDir.x, cameraDir.y, cameraDir.z };
+
+			a[0] = { right.x, cameraAxis.x, cameraDir.x };
+			a[1] = { right.y, cameraAxis.y, cameraDir.y };
+			a[2] = { right.z, cameraAxis.z, cameraDir.z };
 
 			float trace = a[0][0] + a[1][1] + a[2][2];
 			if (trace > 0) {

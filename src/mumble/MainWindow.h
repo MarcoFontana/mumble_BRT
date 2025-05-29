@@ -75,6 +75,7 @@ private:
 	Q_OBJECT
 	Q_DISABLE_COPY(MainWindow)
 private:
+	std::string fileName;
 	std::ofstream logFile;
 	bool userTalking = false;
 	bool userWasTalking = false;

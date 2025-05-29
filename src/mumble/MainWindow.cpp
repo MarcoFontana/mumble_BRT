@@ -199,9 +199,8 @@ MainWindow::MainWindow(QWidget *p)
 	QObject::connect(this, &MainWindow::serverSynchronized, Global::get().pluginManager,
 					 &PluginManager::on_serverSynchronized);
 
-
-	logFile = std::ofstream(
-		"speakerLog " + QDateTime::currentDateTime().toString("dd MM yy hh-mm-ss").toStdString() + ".txt");
+	fileName = "speakerLog " + QDateTime::currentDateTime().toString("dd MM yy hh-mm-ss").toStdString() + ".txt";
+	logFile = std::ofstream(fileName);
 }
 
 void MainWindow::createActions() {
@@ -2631,14 +2630,23 @@ void MainWindow::userStateChanged() {
 	//}
 	switch (user->tsState) {
 		case Settings::Talking:
+			if (!logFile.is_open()) {
+				logFile.open(fileName, std::ios::app);
+			}
 			logFile << "\n"
 					<< "start: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
 			break;
 		case Settings::Whispering:
+			if (!logFile.is_open()) {
+				logFile.open(fileName, std::ios::app);
+			}
 			logFile << "\n"
 					<< "start: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
 			break;
 		case Settings::Shouting:
+			if (!logFile.is_open()) {
+				logFile.open(fileName, std::ios::app);
+			}
 			Global::get().bAttenuateOthers = Global::get().s.bAttenuateOthersOnTalk;
 
 			Global::get().prioritySpeakerActiveOverride =
@@ -2649,6 +2657,7 @@ void MainWindow::userStateChanged() {
 		case Settings::Passive:
 			logFile << "\n"
 					<< "end: " << QDateTime::currentDateTime().toString("hh:mm:ss.zzz").toStdString().c_str();
+			logFile.close();
 			break;
 		case Settings::MutedTalking:
 		default:

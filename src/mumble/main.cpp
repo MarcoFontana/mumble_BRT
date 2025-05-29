@@ -163,6 +163,7 @@ int main(int argc, char **argv) {
 
 #if QT_VERSION >= 0x050100
 	a.setAttribute(Qt::AA_UseHighDpiPixmaps);
+	a.setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
 
 #ifdef Q_OS_WIN
